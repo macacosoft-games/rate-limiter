@@ -31,7 +31,7 @@ export async function executeActionAsPromise<T>(
   // Check if enough tokens are available
   const tokensLeft = await rateLimiter.getTokensLeftAsync();
   if (tokensLeft < actionTokens) {
-    throw new RateLimitError('Rate limit exceeded');
+    throw RateLimitError.fromUnknownReason('not enough tokens');
   }
   let action: IRateLimitAction | null = null;
   try {

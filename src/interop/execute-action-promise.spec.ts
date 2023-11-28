@@ -27,7 +27,7 @@ describe('executeActionAsPromise', () => {
   test('throws error when rate limit is exceeded', async () => {
     mockRateLimiter.getTokensLeftAsync.mockResolvedValue(1); // Only 1 token available
 
-    await expect(executeActionAsPromise(mockAction, 3, mockRateLimiter)).rejects.toThrow('Rate limit exceeded');
+    await expect(executeActionAsPromise(mockAction, 3, mockRateLimiter)).rejects.toThrow();
 
     expect(mockAction).not.toHaveBeenCalled();
   });
