@@ -6,7 +6,7 @@ describe('RateLimitCancellableAction', () => {
 
   beforeEach(() => {
     onCancelMock = jest.fn().mockResolvedValue(undefined);
-    action = new RateLimitCancellableAction(5, onCancelMock);
+    action = new RateLimitCancellableAction('', 5, onCancelMock);
   });
 
   test('should initialize with correct token count and null dates', () => {

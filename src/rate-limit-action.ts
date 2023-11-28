@@ -3,6 +3,11 @@
  */
 export interface IRateLimitAction {
   /**
+   * A unique identifier for the action. This ID can be used to track or reference
+   * the action within the rate limiting system.
+   */
+  readonly id: string;
+  /**
    * The number of tokens required for the action.
    */
   readonly tokens: number;
@@ -30,6 +35,7 @@ export interface IRateLimitCancellableAction extends IRateLimitAction {
  * Represents a cancellable rate-limited action.
  */
 export class RateLimitCancellableAction implements IRateLimitCancellableAction {
+  readonly id: string;
   private _performed: Date | null;
   private _started: Date | null;
   readonly tokens: number;
@@ -38,10 +44,12 @@ export class RateLimitCancellableAction implements IRateLimitCancellableAction {
   /**
    * Constructs a new RateLimitCancellableAction.
    *
+   * @param id - A unique identifier for the action. This ID is used to track or reference the action within the rate limiting system.
    * @param tokens - The number of tokens required for the action.
    * @param onCancel - A callback function that is called when the action is cancelled.
    */
-  constructor(tokens: number, onCancel: (action: RateLimitCancellableAction) => Promise<void>) {
+  constructor(id: string, tokens: number, onCancel: (action: RateLimitCancellableAction) => Promise<void>) {
+    this.id = id;
     this.tokens = tokens;
     this.onCancel = onCancel;
     this._started = null;
