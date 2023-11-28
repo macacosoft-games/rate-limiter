@@ -16,4 +16,16 @@ export interface IRateLimiterOptions {
    * @property term The duration of the timespan in the chosen units of measurement.
    */
   timespan: Timespan;
+  /**
+   * Optional timespan after which an action is automatically released.
+   * If not specified, it defaults to the value of `timespan`.
+   * This property defines the duration after which an acquired token
+   * for an action is automatically released, making it available for other actions.
+   * This can be useful to ensure that tokens are not indefinitely consumed by actions
+   * that fail to release them.
+   *
+   * @property unit The unit of time measurement (second, millisecond, minute, hour).
+   * @property term The duration of the timespan in the chosen units of measurement.
+   */
+  actionAutoReleaseTimespan?: Timespan;
 }

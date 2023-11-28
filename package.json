@@ -1,6 +1,6 @@
 {
   "name": "@macacosoft/rate-limiter",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A generic rate limiter for the web and node.js",
   "main": "./dist/index.js",
   "module": "./dist/index.es.js",
