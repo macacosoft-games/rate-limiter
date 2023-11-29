@@ -7,6 +7,13 @@ import assert from 'assert';
 import { timespanToMilliseconds } from '../options/timespan';
 import { clearTimeout } from 'timers';
 
+type ProcessingAction = { autoReleaseTimeout: NodeJS.Timeout; action: RateLimitCancellableAction };
+type QueuedAction = {
+  action: RateLimitCancellableAction;
+  resolve: (value: RateLimitCancellableAction | PromiseLike<RateLimitCancellableAction>) => void;
+  reject: (reason?: any) => void;
+};
+
 /**
  * A single-process implementation of a rate limiter.
  * This rate limiter uses a token bucket algorithm to control access to a resource.
@@ -14,8 +21,8 @@ import { clearTimeout } from 'timers';
 export class SingleProcessRateLimiter implements IRateLimiter {
   private readonly logger: Logger<ILogObj>;
   readonly options: IRateLimiterOptions;
-  private queue: RateLimitCancellableAction[];
-  private readonly processing: Map<string, { autoReleaseTimeout: NodeJS.Timeout; action: RateLimitCancellableAction }>;
+  private queue: QueuedAction[];
+  private readonly processing: Map<string, ProcessingAction>;
   private tokensLeft: number;
   private tokensIssuedFrom: Date | null;
   private idGenerator: number = 0;
@@ -36,20 +43,23 @@ export class SingleProcessRateLimiter implements IRateLimiter {
     this.cachedOptionsTimespanMs = timespanToMilliseconds(this.options.timespan);
   }
 
-  async getActionAsync(tokens: number): Promise<IRateLimitAction> {
-    let action: RateLimitCancellableAction;
-    if (this.tokensLeft >= tokens) {
-      action = this.createAction(tokens);
-      this.processAction(action);
-    } else {
-      action = this.createAction(tokens);
-      this.enqueueAction(action);
-    }
-    return action;
+  getActionAsync(tokens: number): Promise<IRateLimitAction> {
+    return new Promise((resolve, reject) => {
+      try {
+        const action = this.createAction(tokens);
+        if (this.tokensLeft >= tokens) {
+          this.processAction(action, resolve);
+          return;
+        }
+        this.enqueueAction(action, resolve, reject);
+      } catch (e) {
+        reject(e);
+      }
+    });
   }
 
   async getPendingActionsAsync(): Promise<IRateLimitCancellableAction[]> {
-    return [...this.queue.values()];
+    return [...this.queue.values()].map((v) => v.action);
   }
 
   async getTokensLeftAsync(): Promise<number> {
@@ -78,7 +88,13 @@ export class SingleProcessRateLimiter implements IRateLimiter {
       tokens,
       async (action: RateLimitCancellableAction) => {
         this.logger.trace(`Cancel action '${action.id}'`);
-        this.queue = this.queue.filter((queuedAction) => queuedAction.id === action.id);
+        this.queue = this.queue.filter((queuedAction) => {
+          if (queuedAction.action.id === action.id) {
+            queuedAction.reject('Action was cancelled');
+            return false;
+          }
+          return true;
+        });
       },
     );
   }
@@ -87,12 +103,19 @@ export class SingleProcessRateLimiter implements IRateLimiter {
     return (++this.idGenerator).toString();
   }
 
-  private enqueueAction(action: RateLimitCancellableAction) {
+  private enqueueAction(
+    action: RateLimitCancellableAction,
+    resolve: (value: RateLimitCancellableAction | PromiseLike<RateLimitCancellableAction>) => void,
+    reject: (reason?: any) => void,
+  ) {
     this.logger.trace(`Enqueue action '${action.id}' of ${action.tokens} tokens`);
-    this.queue.push(action);
+    this.queue.push({ action, resolve, reject });
   }
 
-  private processAction(action: RateLimitCancellableAction) {
+  private processAction(
+    action: RateLimitCancellableAction,
+    resolve: (value: RateLimitCancellableAction | PromiseLike<RateLimitCancellableAction>) => void,
+  ) {
     this.logger.trace(`Get action '${action.id}' of ${action.tokens} tokens`);
     action.startAction(new Date());
     this.tokensLeft -= action.tokens;
@@ -106,6 +129,7 @@ export class SingleProcessRateLimiter implements IRateLimiter {
       action,
     });
     this.scheduleRefillTokens();
+    resolve(action);
   }
 
   private releaseAction(action: IRateLimitAction, autoRelease: boolean) {
@@ -139,10 +163,14 @@ export class SingleProcessRateLimiter implements IRateLimiter {
       this.processing.delete(it.action.id);
       this.tokensLeft += it.action.tokens;
     });
-    while (this.queue.length > 0 && this.tokensLeft >= this.queue[0].tokens) {
-      const action = this.queue.shift();
-      assert(action);
-      this.processAction(action);
+    while (this.queue.length > 0 && this.tokensLeft >= this.queue[0].action.tokens) {
+      const queuedAction = this.queue.shift();
+      assert(queuedAction);
+      try {
+        this.processAction(queuedAction.action, queuedAction.resolve);
+      } catch (e) {
+        queuedAction.reject(e);
+      }
     }
     this.tokensIssuedFrom = null;
     if (this.processing.size > 0) {

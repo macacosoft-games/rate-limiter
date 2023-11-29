@@ -42,4 +42,24 @@ describe('SingleProcessRateLimiter', () => {
     jest.advanceTimersByTime(1000);
     expect(await rateLimiter.getTokensLeftAsync()).toEqual(10);
   });
+
+  test('should cancel an enqueued action', async () => {
+    // Enqueue an action that requires more tokens than available
+    const actionPromise = rateLimiter.getActionAsync(12);
+
+    // Get the enqueued action
+    const pendingActions = await rateLimiter.getPendingActionsAsync();
+    expect(pendingActions.length).toBe(1);
+
+    // Cancel the enqueued action
+    const enqueuedAction = pendingActions[0];
+    await enqueuedAction.cancel();
+
+    // Assert that the action was cancelled
+    await expect(actionPromise).rejects.toEqual('Action was cancelled');
+
+    // Assert that the queue is empty
+    const updatedPendingActions = await rateLimiter.getPendingActionsAsync();
+    expect(updatedPendingActions.length).toBe(0);
+  });
 });
